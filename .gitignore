@@ -4,3 +4,4 @@ genelist.txt_rma_salt.txt_coexp.matrix.txt
 log
 standout
 top_100
+scripts/run.sh
