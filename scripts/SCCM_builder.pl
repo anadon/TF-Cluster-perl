@@ -39,21 +39,46 @@ my %hash;
 my @id_list;
 my %tf;
 my @TFgene;
+
+my %EXP_entries;
+my @EXP_list;
+
 while(<EXP>){
     chomp;
     next if /^\#/;
     my @array = split;
     my $id = shift @array;
-    push (@id_list,$id);
-    $hash{$id}= [@array];
+    if (exists $hash{$id} ) {} else {
+      push (@id_list,$id);
+      $hash{$id}= [@array];
+    }
 }
+
+print scalar(keys %hash);
+print " experimental entries\n";
+
+while(<L>){
+    chomp;
+    next if /^\#/;
+    my $gene =$_;
+    if (exists $EXP_entries{$gene}) {} else {
+      if (exists $hash{$gene}){
+        push(@EXP_list, $gene);
+        $EXP_entries{$gene}= 1;
+      }
+    }
+}
+
+print scalar(keys %EXP_entries);
+print " candidate TFs\n";
+
 my $pm=new Parallel::ForkManager($cpu);
 my $test=0;
 mkdir "top_$top", 0777 unless -d "top_$top";
 
-while(<L>){
-    chomp;
-    my $gene =$_;
+foreach (@EXP_list){
+  print "2";
+  my $gene = $_;
     push @TFgene,$gene;
     $pm->start and next;
     next if /^\#/;
