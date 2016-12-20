@@ -85,9 +85,7 @@ foreach (@EXP_list){
     my %rho;
     foreach (@id_list){
         my $c = Statistics::RankCorrelation->new( $hash{$gene}, $hash{$_} );
-	my $n = $c->spearman;
-	$n=sprintf("%.4f",$n);
-	$rho{$_}=$n;
+	$rho{$_} = $c->spearman;
     }
     #print `date`,"\n"; 
     my @sorted = sort {$rho{$b} <=> $rho{$a}} keys %rho; #list gene names in rho sorted order
