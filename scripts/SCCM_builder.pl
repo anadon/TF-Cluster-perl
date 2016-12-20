@@ -77,17 +77,15 @@ my $test=0;
 mkdir "top_$top", 0777 unless -d "top_$top";
 
 foreach (@EXP_list){
-  print "2";
-  my $gene = $_;
+    print "2";
+    next if /^\#/;
+    my $gene = $_;
     push @TFgene,$gene;
     $pm->start and next;
-    next if /^\#/;
     my %rho;
     foreach (@id_list){
-        my $c = Statistics::RankCorrelation->new( $hash{$gene}, $hash{$_} );
-	$rho{$_} = $c->spearman;
+        $rho{$_} = Statistics::RankCorrelation->new( $hash{$gene}, $hash{$_} )->spearman;
     }
-    #print `date`,"\n"; 
     my @sorted = sort {$rho{$b} <=> $rho{$a}} keys %rho; #list gene names in rho sorted order
     open (TOP,">top_$top/$gene")|| die "can't open output file top_$top/$gene $!";
     for(1..$top){
@@ -104,9 +102,9 @@ opendir(DIR, "top_$top") or die "can't opendir top_$top: $!";
 while (defined(my $file = readdir(DIR))) {
     next if $file =~ /^\.\.?$/; # skip . and ..
     #push @TFgene, $file;
-    open (TF,"top_$top/$file")|| die "can't open input file $file $!";	
+    open (TF,"top_$top/$file")|| die "can't open input file $file $!";    
     while(<TF>){
-	chomp;
+    chomp;
         $tf{$file}{$_}=1; 
     }
     close TF;
@@ -116,11 +114,11 @@ print "Read top correlated TF gene files done at ",`date`;
 foreach my $rGene (@TFgene){ # will be the row TF gene
     print  OUT "$rGene\t";
     foreach my $cGene (@TFgene){ # will be the col TF gene
-	my $count=0;
-	foreach my $k (keys %{$tf{$cGene}}){ #compare top 100 genes of col TF gene with top 100 row TF genes see how many of them are the same
-	   $count ++ if $tf{$rGene}{$k};
-	}
-	print OUT "$count\t";
+    my $count=0;
+    foreach my $k (keys %{$tf{$cGene}}){ #compare top 100 genes of col TF gene with top 100 row TF genes see how many of them are the same
+       $count ++ if $tf{$rGene}{$k};
+    }
+    print OUT "$count\t";
     }
     print OUT "\n";
 }
