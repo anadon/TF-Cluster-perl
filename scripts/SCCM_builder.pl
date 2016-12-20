@@ -53,6 +53,7 @@ while(<EXP>){
       $hash{$id}= [@array];
     }
 }
+close EXP;
 
 print scalar(keys %hash);
 print " experimental entries\n";
@@ -68,6 +69,7 @@ while(<L>){
       }
     }
 }
+close L;
 
 print scalar(keys %EXP_entries);
 print " candidate TFs\n";
@@ -95,7 +97,6 @@ foreach (@EXP_list){
     $pm->finish;
 }
 $pm->wait_all_children;
-close L;
 print "Correlation done at ",`date`,"\n" ;
 
 opendir(DIR, "top_$top") or die "can't opendir top_$top: $!";
