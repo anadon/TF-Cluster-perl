@@ -17,7 +17,7 @@
 #===============================================================================
 use Statistics::RankCorrelation;
 use File::Basename;
-use threads;
+use Parallel::ForkManager;
 use strict;
 
 my %args=@ARGV;
@@ -110,11 +110,10 @@ print scalar(@TFgene);
 print " candidate TFs\n";
 
 my $pm=new Parallel::ForkManager($cpu);
-mkdir "top_$top", 0666 unless -d "top_$top";
+mkdir "top_$top", 0777 unless -d "top_$top";
 
 #foreach (@EXP_list){
 for(my $i = 0; $i < $cpu; $i++){
-    next if /^\#/;
     my $cpu_offset = $i;
     $pm->start and next;
     
@@ -137,6 +136,7 @@ for(my $i = 0; $i < $cpu; $i++){
     
     $pm->finish;
 }
+
 
 print "Correlation done at ",`date`,"\n" ;
 
