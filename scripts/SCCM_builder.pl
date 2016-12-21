@@ -18,8 +18,6 @@
 use Statistics::RankCorrelation;
 use File::Basename;
 use threads;
-use Sys::Info;
-use Sys::Info::Constants qw( :device_cpu );
 use strict;
 
 my %args=@ARGV;
@@ -27,10 +25,11 @@ my $genelist = $args{'-g'};
 my $expression = $args{'-e'};
 my $top=$args{'-t'}||100;
 
-my $info = Sys::Info->new;
-my $cpu_all  = $info->device( 'CPU' );
 
-my $cpu :shared = $cpu_all->count;
+open my $handle, "/proc/cpuinfo" or die "Can't open cpuinfo: $!\n";
+my $cpu = scalar (map /^processor/, <$handle>) ; 
+close $handle;
+
 print "Detected $cpu CPUs\n";
 
 unless($genelist and $expression){
