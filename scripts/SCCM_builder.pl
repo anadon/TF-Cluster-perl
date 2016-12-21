@@ -25,7 +25,6 @@ my $genelist = $args{'-g'};
 my $expression = $args{'-e'};
 my $top=$args{'-t'}||100;
 
-
 open my $handle, "/proc/cpuinfo" or die "Can't open cpuinfo: $!\n";
 my $cpu = scalar (map /^processor/, <$handle>) ; 
 close $handle;
@@ -35,6 +34,7 @@ unless($genelist and $expression){
     $0 -g genelist_file -e expression_file <-t NumOfTopGeneChoose> <-cpu howManyCPUs> \n";
     exit;
 }
+
 my $expbasename = basename($expression);
 my $out=$genelist."_".$expbasename."_coexp.matrix.txt";
 open (L,"$genelist")|| die "can't open genelist file $genelist $!";
@@ -135,7 +135,7 @@ for(my $i = 0; $i < $cpu; $i++){
     
     }
     
-    $pm->finish;rray, threads->create('calculate_coefficients', $i));
+    $pm->finish;
 }
 
 print "Correlation done at ",`date`,"\n" ;
