@@ -17,13 +17,22 @@
 #===============================================================================
 use Statistics::RankCorrelation;
 use File::Basename;
-use Parallel::ForkManager;
+use threads;
+use Sys::Info;
+use Sys::Info::Constants qw( :device_cpu );
 use strict;
+
 my %args=@ARGV;
 my $genelist = $args{'-g'};
 my $expression = $args{'-e'};
 my $top=$args{'-t'}||100;
-my $cpu=$args{'-cpu'}||1;
+
+my $info = Sys::Info->new;
+my $cpu_all  = $info->device( 'CPU' );
+
+my $cpu :shared = $cpu_all->count;
+print "Detected $cpu CPUs\n";
+
 unless($genelist and $expression){
     print "Usage: 
     $0 -g genelist_file -e expression_file <-t NumOfTopGeneChoose> <-cpu howManyCPUs> \n";
@@ -35,6 +44,11 @@ open (L,"$genelist")|| die "can't open genelist file $genelist $!";
 open (EXP,"$expression")|| die "can't open expression file $expression $!";
 open (OUT,">$out")|| die "can't open output file $out $!";
 print "SCCM pipeline start from ",`date`;
+
+#NOTE: Since the threads used here have a read-only relationship
+#to the data, it is safe to not use the :shared qualification.
+#Doing so actually significantly degrades performance with no added
+#integrity.
 my %hash;
 my @id_list;
 my %tf;
@@ -42,6 +56,29 @@ my @TFgene;
 
 my %EXP_entries;
 my @EXP_list;
+
+sub calculate_coefficients {
+  my @args = @_;
+  my $offset = $args[0];
+  print "Deploying thread $offset\n";
+  while($offset < scalar(@TFgene)){
+    my $gene = $TFgene[$offset];
+    my %rho;
+    my @gene_experiment_data = $hash{$gene};
+    foreach (@id_list){
+        $rho{$_} = Statistics::RankCorrelation->new( @gene_experiment_data, $hash{$_} )->spearman;
+    }
+    
+    my @sorted = sort {$rho{$b} <=> $rho{$a}} keys %rho; #list gene names in rho sorted order
+    open (TOP,">top_$top/$gene")|| die "can't open output file top_$top/$gene $!";
+    for(1..$top){
+       print TOP "$sorted[$_]\n";
+    }     
+    close TOP;
+    
+    $offset = $offset + $cpu;
+  }
+}
 
 while(<EXP>){
     chomp;
@@ -64,39 +101,29 @@ while(<L>){
     my $gene =$_;
     if (exists $EXP_entries{$gene}) {} else {
       if (exists $hash{$gene}){
-        push(@EXP_list, $gene);
+        push(@TFgene, $gene);
         $EXP_entries{$gene}= 1;
       }
     }
 }
 close L;
+undef %EXP_entries;
 
-print scalar(keys %EXP_entries);
+print scalar(@TFgene);
 print " candidate TFs\n";
 
-my $pm=new Parallel::ForkManager($cpu);
-my $test=0;
 mkdir "top_$top", 0777 unless -d "top_$top";
 
-foreach (@EXP_list){
-    print "2";
-    next if /^\#/;
-    my $gene = $_;
-    push @TFgene,$gene;
-    $pm->start and next;
-    my %rho;
-    foreach (@id_list){
-        $rho{$_} = Statistics::RankCorrelation->new( $hash{$gene}, $hash{$_} )->spearman;
-    }
-    my @sorted = sort {$rho{$b} <=> $rho{$a}} keys %rho; #list gene names in rho sorted order
-    open (TOP,">top_$top/$gene")|| die "can't open output file top_$top/$gene $!";
-    for(1..$top){
-       print TOP "$sorted[$_]\n";
-    }     
-    close TOP;
-    $pm->finish;
+my @thread_array;
+
+for(my $i = 0; $i < $cpu; $i++){
+    push(@thread_array, threads->create('calculate_coefficients', $i));
 }
-$pm->wait_all_children;
+
+foreach (@thread_array){
+  $_->join();
+}
+
 print "Correlation done at ",`date`,"\n" ;
 
 opendir(DIR, "top_$top") or die "can't opendir top_$top: $!";
@@ -123,6 +150,7 @@ foreach my $rGene (@TFgene){ # will be the row TF gene
     }
     print OUT "\n";
 }
+close OUT;
 
 print "The program end at: ",`date`;
 
