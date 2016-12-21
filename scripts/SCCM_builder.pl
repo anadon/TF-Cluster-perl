@@ -17,8 +17,9 @@
 #===============================================================================
 use Statistics::RankCorrelation;
 use File::Basename;
-use Parallel::ForkManager;
+use threads;
 use strict;
+
 my %args=@ARGV;
 my $genelist = $args{'-g'};
 my $expression = $args{'-e'};
@@ -40,6 +41,11 @@ open (L,"$genelist")|| die "can't open genelist file $genelist $!";
 open (EXP,"$expression")|| die "can't open expression file $expression $!";
 open (OUT,">$out")|| die "can't open output file $out $!";
 print "SCCM pipeline start from ",`date`;
+
+#NOTE: Since the threads used here have a read-only relationship
+#to the data, it is safe to not use the :shared qualification.
+#Doing so actually significantly degrades performance with no added
+#integrity.
 my %hash;
 my @id_list;
 my %tf;
@@ -47,6 +53,29 @@ my @TFgene;
 
 my %EXP_entries;
 my @EXP_list;
+
+sub calculate_coefficients {
+  my @args = @_;
+  my $offset = $args[0];
+  print "Deploying thread $offset\n";
+  while($offset < scalar(@TFgene)){
+    my $gene = $TFgene[$offset];
+    my %rho;
+    my @gene_experiment_data = $hash{$gene};
+    foreach (@id_list){
+        $rho{$_} = Statistics::RankCorrelation->new( @gene_experiment_data, $hash{$_} )->spearman;
+    }
+    
+    my @sorted = sort {$rho{$b} <=> $rho{$a}} keys %rho; #list gene names in rho sorted order
+    open (TOP,">top_$top/$gene")|| die "can't open output file top_$top/$gene $!";
+    for(1..$top){
+       print TOP "$sorted[$_]\n";
+    }     
+    close TOP;
+    
+    $offset = $offset + $cpu;
+  }
+}
 
 while(<EXP>){
     chomp;
@@ -106,9 +135,9 @@ for(my $i = 0; $i < $cpu; $i++){
     
     }
     
-    $pm->finish;
+    $pm->finish;rray, threads->create('calculate_coefficients', $i));
 }
-$pm->wait_all_children;
+
 print "Correlation done at ",`date`,"\n" ;
 
 opendir(DIR, "top_$top") or die "can't opendir top_$top: $!";
@@ -135,6 +164,7 @@ foreach my $rGene (@TFgene){ # will be the row TF gene
     }
     print OUT "\n";
 }
+close OUT;
 
 print "The program end at: ",`date`;
 
