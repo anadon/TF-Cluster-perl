@@ -23,7 +23,12 @@ my %args=@ARGV;
 my $genelist = $args{'-g'};
 my $expression = $args{'-e'};
 my $top=$args{'-t'}||100;
-my $cpu=$args{'-cpu'}||1;
+
+
+open my $handle, "/proc/cpuinfo" or die "Can't open cpuinfo: $!\n";
+my $cpu = scalar (map /^processor/, <$handle>) ; 
+close $handle;
+
 unless($genelist and $expression){
     print "Usage: 
     $0 -g genelist_file -e expression_file <-t NumOfTopGeneChoose> <-cpu howManyCPUs> \n";
@@ -64,36 +69,43 @@ while(<L>){
     my $gene =$_;
     if (exists $EXP_entries{$gene}) {} else {
       if (exists $hash{$gene}){
-        push(@EXP_list, $gene);
+        push(@TFgene, $gene);
         $EXP_entries{$gene}= 1;
       }
     }
 }
 close L;
+undef %EXP_entries;
 
-print scalar(keys %EXP_entries);
+print scalar(@TFgene);
 print " candidate TFs\n";
 
 my $pm=new Parallel::ForkManager($cpu);
-my $test=0;
-mkdir "top_$top", 0777 unless -d "top_$top";
+mkdir "top_$top", 0666 unless -d "top_$top";
 
-foreach (@EXP_list){
-    print "2";
+#foreach (@EXP_list){
+for(my $i = 0; $i < $cpu; $i++){
     next if /^\#/;
-    my $gene = $_;
-    push @TFgene,$gene;
+    my $cpu_offset = $i;
     $pm->start and next;
-    my %rho;
-    foreach (@id_list){
+    
+    while($cpu_offset < scalar(@TFgene)){
+    
+      my $gene = $TFgene[$cpu_offset];
+      my %rho;
+      foreach (@id_list){
         $rho{$_} = Statistics::RankCorrelation->new( $hash{$gene}, $hash{$_} )->spearman;
+      }
+      my @sorted = sort {$rho{$b} <=> $rho{$a}} keys %rho; #list gene names in rho sorted order
+      open (TOP,">top_$top/$gene")|| die "can't open output file top_$top/$gene $!";
+      for(1..$top){
+        print TOP "$sorted[$_]\n";
+      }     
+      close TOP;
+      $cpu_offset = $cpu_offset + $cpu;
+    
     }
-    my @sorted = sort {$rho{$b} <=> $rho{$a}} keys %rho; #list gene names in rho sorted order
-    open (TOP,">top_$top/$gene")|| die "can't open output file top_$top/$gene $!";
-    for(1..$top){
-       print TOP "$sorted[$_]\n";
-    }     
-    close TOP;
+    
     $pm->finish;
 }
 $pm->wait_all_children;
