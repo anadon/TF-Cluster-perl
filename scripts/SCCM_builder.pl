@@ -54,28 +54,6 @@ my @TFgene;
 my %EXP_entries;
 my @EXP_list;
 
-sub calculate_coefficients {
-  my @args = @_;
-  my $offset = $args[0];
-  print "Deploying thread $offset\n";
-  while($offset < scalar(@TFgene)){
-    my $gene = $TFgene[$offset];
-    my %rho;
-    my @gene_experiment_data = $hash{$gene};
-    foreach (@id_list){
-        $rho{$_} = Statistics::RankCorrelation->new( @gene_experiment_data, $hash{$_} )->spearman;
-    }
-    
-    my @sorted = sort {$rho{$b} <=> $rho{$a}} keys %rho; #list gene names in rho sorted order
-    open (TOP,">top_$top/$gene")|| die "can't open output file top_$top/$gene $!";
-    for(1..$top){
-       print TOP "$sorted[$_]\n";
-    }     
-    close TOP;
-    
-    $offset = $offset + $cpu;
-  }
-}
 
 while(<EXP>){
     chomp;
@@ -136,6 +114,8 @@ for(my $i = 0; $i < $cpu; $i++){
     
     $pm->finish;
 }
+
+$pm->wait_all_children;
 
 
 print "Correlation done at ",`date`,"\n" ;
