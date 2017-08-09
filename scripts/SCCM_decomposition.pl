@@ -111,11 +111,7 @@ printf ("std = $std\n");
 my $lv1 = $avg + $tl1*$std;
 my $lv2 = $avg + $tl2*$std;
 my $lv3 = $avg + $tl3*$std;
-
-printf ("Adjusted tl1 = $lv1\n");
-printf ("Adjusted tl2 = $lv2\n");
-printf ("Adjusted tl3 = $lv3\n");
-
+my $lvb = $std/2;
 
 @sorted = sort {$hash{$b} <=> $hash{$a}} keys %hash;  # sort to get the pair of TFs with maximal value
 print "sort0:$sorted[0]\n";

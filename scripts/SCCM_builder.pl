@@ -15,118 +15,103 @@
 #      CREATED:  10/06/10 11:14:40 CST
 #     REVISION:  ---
 #===============================================================================
+use lib '/var/www/html/cluster/myMods/share/perl5/Config';
+use lib '/var/www/html/cluster/myMods/share/perl5';
+use lib '/var/www/html/cluster/myMods/share/perl5/Parallel';
+use lib '/var/www/html/cluster/myMods/lib64/perl5/auto/Config';
+use lib '/var/www/html/cluster/myMods/share/perl5/Statistics';
+use lib '/var/www/html/cluster/myMods/share/man/man3';
+use lib '/var/www/html/cluster/backup/modules/share/perl5';
+use Statistics::TheilSen qw/theilsen/;
 use Statistics::RankCorrelation;
+use Statistics::Basic qw(:all nofill);
+use Statistics::LineFit;
 use File::Basename;
 use Parallel::ForkManager;
 use strict;
-
 my %args=@ARGV;
 my $genelist = $args{'-g'};
 my $expression = $args{'-e'};
 my $top=$args{'-t'}||100;
-
-open my $handle, "/proc/cpuinfo" or die "Can't open cpuinfo: $!\n";
-my $cpu = scalar (map /^processor/, <$handle>) ; 
-close $handle;
-
+my $cpu=$args{'-cpu'}||1;
+my $corr_method = $args{'-corr'}||1;
 unless($genelist and $expression){
     print "Usage: 
     $0 -g genelist_file -e expression_file <-t NumOfTopGeneChoose> <-cpu howManyCPUs> \n";
     exit;
 }
-
 my $expbasename = basename($expression);
 my $out=$genelist."_".$expbasename."_coexp.matrix.txt";
 open (L,"$genelist")|| die "can't open genelist file $genelist $!";
 open (EXP,"$expression")|| die "can't open expression file $expression $!";
 open (OUT,">$out")|| die "can't open output file $out $!";
 print "SCCM pipeline start from ",`date`;
-
-#NOTE: Since the threads used here have a read-only relationship
-#to the data, it is safe to not use the :shared qualification.
-#Doing so actually significantly degrades performance with no added
-#integrity.
 my %hash;
 my @id_list;
 my %tf;
 my @TFgene;
-
-my %EXP_entries;
-my @EXP_list;
-
-
+my $n;
 while(<EXP>){
     chomp;
     next if /^\#/;
     my @array = split;
     my $id = shift @array;
-    if (exists $hash{$id} ) {} else {
-      push (@id_list,$id);
-      $hash{$id}= [@array];
-    }
+    push (@id_list,$id);
+    $hash{$id}= [@array];
 }
-close EXP;
-
-print scalar(keys %hash);
-print " experimental entries\n";
+my $pm=new Parallel::ForkManager($cpu);
+my $test=0;
+mkdir "top_$top", 0777 unless -d "top_$top";
 
 while(<L>){
     chomp;
-    next if /^\#/;
     my $gene =$_;
-    if (exists $EXP_entries{$gene}) {} else {
-      if (exists $hash{$gene}){
-        push(@TFgene, $gene);
-        $EXP_entries{$gene}= 1;
-      }
-    }
-}
-close L;
-undef %EXP_entries;
-
-print scalar(@TFgene);
-print " candidate TFs\n";
-
-my $pm=new Parallel::ForkManager($cpu);
-mkdir "top_$top", 0777 unless -d "top_$top";
-
-#foreach (@EXP_list){
-for(my $i = 0; $i < $cpu; $i++){
-    my $cpu_offset = $i;
+    push @TFgene,$gene;
     $pm->start and next;
-    
-    while($cpu_offset < scalar(@TFgene)){
-    
-      my $gene = $TFgene[$cpu_offset];
-      my %rho;
-      foreach (@id_list){
-        $rho{$_} = Statistics::RankCorrelation->new( $hash{$gene}, $hash{$_} )->spearman;
-      }
-      my @sorted = sort {$rho{$b} <=> $rho{$a}} keys %rho; #list gene names in rho sorted order
-      open (TOP,">top_$top/$gene")|| die "can't open output file top_$top/$gene $!";
-      for(1..$top){
-        print TOP "$sorted[$_]\n";
-      }     
-      close TOP;
-      $cpu_offset = $cpu_offset + $cpu;
-    
+    next if /^\#/;
+    my %rho;
+    foreach (@id_list){
+        my $c = Statistics::RankCorrelation->new( $hash{$gene}, $hash{$_} );
+        if($corr_method==1){$n = $c->spearman;}
+        if($corr_method==2){$n = correlation($hash{$gene}, $hash{$_});}    
+    	if($corr_method==4){$n = $c->kendall;}
+        if($corr_method==3){my $lineFit = Statistics::LineFit->new();
+                            $lineFit->setData ($hash{$gene}, $hash{$_}) or die "Invalid data";
+                            my $rSquared = $lineFit->rSquared();
+                            $n = sqrt($rSquared);}
+        if($corr_method==5){$n = $c->csim;}
+        if($corr_method==6){
+
+            my $tse = Statistics::TheilSen->new($hash{$gene}, $hash{$_});
+            $n = $tse->m();
+
+
+        }
+
+
+    	$n=sprintf("%.4f",$n);
+    	$rho{$_}=$n;
     }
-    
+    #print `date`,"\n"; 
+    my @sorted = sort {$rho{$b} <=> $rho{$a}} keys %rho; #list gene names in rho sorted order
+    open (TOP,">top_$top/$gene")|| die "can't open output file top_$top/$gene $!";
+    for(1..$top){
+       print TOP "$sorted[$_]\n";
+    }     
+    close TOP;
     $pm->finish;
 }
-
 $pm->wait_all_children;
-
-
+close L;
 print "Correlation done at ",`date`,"\n" ;
 
 opendir(DIR, "top_$top") or die "can't opendir top_$top: $!";
 while (defined(my $file = readdir(DIR))) {
     next if $file =~ /^\.\.?$/; # skip . and ..
     #push @TFgene, $file;
-    open (TF,"top_$top/$file")|| die "can't open input file $file $!";    
+    open (TF,"top_$top/$file")|| die "can't open input file $file $!";	
     while(<TF>){
-    chomp;
+	chomp;
         $tf{$file}{$_}=1; 
     }
     close TF;
@@ -136,15 +121,14 @@ print "Read top correlated TF gene files done at ",`date`;
 foreach my $rGene (@TFgene){ # will be the row TF gene
     print  OUT "$rGene\t";
     foreach my $cGene (@TFgene){ # will be the col TF gene
-    my $count=0;
-    foreach my $k (keys %{$tf{$cGene}}){ #compare top 100 genes of col TF gene with top 100 row TF genes see how many of them are the same
-       $count ++ if $tf{$rGene}{$k};
-    }
-    print OUT "$count\t";
+	my $count=0;
+	foreach my $k (keys %{$tf{$cGene}}){ #compare top 100 genes of col TF gene with top 100 row TF genes see how many of them are the same
+	   $count ++ if $tf{$rGene}{$k};
+	}
+	print OUT "$count\t";
     }
     print OUT "\n";
 }
-close OUT;
 
 print "The program end at: ",`date`;
 

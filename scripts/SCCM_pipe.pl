@@ -46,6 +46,15 @@ my $kickedSize=$cfg->param('kickSize');
 my $tl1=$cfg->param('tripleLink1');
 my $tl2=$cfg->param('tripleLink2');
 my $tl3=$cfg->param('tripleLink3');
+
+my $corr_method=$cfg->param('corr_method');
+my $decomp_method=$cfg->param('decomp_method');
+my $SSGA_p=$cfg->param('SSGA_p');
+my $SSGA_t=$cfg->param('SSGA_t');
+my $MSGA_p=$cfg->param('MSGA_p');
+my $MSGA_q=$cfg->param('MSGA_q');
+my $MSGA_t=$cfg->param('MSGA_t');
+
 my $indir=dirname($genelist);
 my $outdir=$cfg->param('outdir')||$indir;
 my $matrix=$cfg->param('matrixName')||$genelist."_".$expbasename."_coexp.matrix.txt";
@@ -53,12 +62,33 @@ open(LOG, ">$outdir\/log") ||die "can't open log file. $!";
 print  LOG "$0 @ARGV\n";
 print LOG "Pipeline  started at ",`date`,"...\n";
 qx(echo start building co-expression matrix ... >>standout);
-qx($lib/SCCM_builder.pl -g $genelist -e $expression -t $top -cpu $cpu >>standout) unless (-s $matrix);#skip SCCM building step if the matrix file already exist.
+# if($corr_method < 7){
+qx(echo start building co-expression matrix ...Linear >>standout);
+qx($lib/SCCM_builder.pl -g $genelist -e $expression -t $top -cpu $cpu -corr $corr_method >>standout) unless (-s $matrix);#skip SCCM building step if the matrix file already exist.
+# }elsif($corr_method == 7){
+# qx(echo start building co-expression matrix ...MIC >>standout);
+# qx(python $lib/pyMIC1.py -i $genelist -o $expression >>standout) unless (-s $matrix);#skip SCCM building step if the matrix file already exist.
+# }else{
+# qx(echo start building co-expression matrix ...MIN_nonLinear >>standout);
+# qx(python $lib/pyMIC2.py -i $genelist -o $expression >>standout) unless (-s $matrix);#skip SCCM building step if the matrix file already exist.
+# }
+
 qx(echo end building co-expression matrix. >>standout);
 qx(echo start matrix decomposition ... >>standout);
 print LOG "SCCM_builder.pl finished  at ",`date`,"...\n";
-qx($lib/SCCM_decomposition.pl -g $genelist -m $matrix -ks $kickedSize  -tl1 $tl1 -tl2 $tl2 -tl3 $tl3 >>standout);
-print "$lib/SCCM_decomposition.pl -g $genelist -m $matrix -ks $kickedSize  -tl1 $tl1 -tl2 $tl2 -tl3 $tl3\n";
+
+if($decomp_method eq "TL"){
+	qx(echo start matrix decomposition ...Triple Link >>standout);
+	qx($lib/SCCM_decomposition.pl -g $genelist -m $matrix -ks $kickedSize  -tl1 $tl1 -tl2 $tl2 -tl3 $tl3 >>standout);
+	print "$lib/SCCM_decomposition.pl -g $genelist -m $matrix -ks $kickedSize  -tl1 $tl1 -tl2 $tl2 -tl3 $tl3\n";
+}elsif($decomp_method eq "SSGA"){
+	qx(echo start matrix decomposition ...SSGA >>standout);
+	qx(perl $lib/First_method.pl -m $matrix -p $SSGA_p -t $SSGA_t >>standout);
+}else{
+	qx(echo start matrix decomposition ...MSGA >>standout);
+	qx(perl $lib/Second_method.pl -m $matrix -p $MSGA_p -q $MSGA_q -t $MSGA_t>>standout);
+}
+
 print "Program  finised at ",`date`,"\n";
 print LOG "Pipeline finised at ",`date`,"\n";
 qx(echo end matrix decomposition >>standout);
